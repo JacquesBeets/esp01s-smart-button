@@ -4,11 +4,23 @@
 #include <ESP8266WiFi.h>
 #include <ArduinoOTA.h>
 #include <OTA.h>
-#include "credentials.h"
+#include <PubSubClient.h>
 
 // Web server and event source setup
 AsyncWebServer server(80);
 AsyncEventSource events("/events");
+
+// MQTT setup
+// const char* MQTT_BROKER = "192.168.0.3";
+// const int MQTT_PORT = 1883;
+// const char* MQTT_USERNAME = ENV_MQTT_USERNAME;
+// const char* MQTT_PASSWORD = ENV_MQTT_PASSWORD;
+const char* MQTT_CLIENT_ID = "ESP01s_SmartButton";
+const char* MQTT_TOPIC_BUTTON1 = "office/jacques/smartbutton/button1/click";
+const char* MQTT_TOPIC_BUTTON2 = "office/jacques/smartbutton/button2/click";
+
+WiFiClient espClient;
+PubSubClient mqttClient(espClient);
 
 // Button configuration
 const int BUTTON1_PIN = 0;  // GPIO0
@@ -18,13 +30,12 @@ const unsigned long DEBOUNCE_DELAY = 50;
 // Button state variables
 struct ButtonState {
     int lastState;
-    int lastSteadyState;
     int lastFlickerableState;
     unsigned long lastDebounceTime;
 };
 
-ButtonState button1 = {HIGH, HIGH, HIGH, 0};
-ButtonState button2 = {HIGH, HIGH, HIGH, 0};
+ButtonState button1 = {HIGH, HIGH, 0};
+ButtonState button2 = {HIGH, HIGH, 0};
 
 // Function prototypes
 void notFound(AsyncWebServerRequest *request);
@@ -32,8 +43,11 @@ void serialToWeb(String message);
 void switchHub(String button);
 void handlePushEventsPing();
 void handleButton(int pin, ButtonState &state, const String &buttonName);
+void setupMQTT();
+void reconnectMQTT();
+void publishButtonPress(const char* topic);
 
-// HTML content
+// HTML content (unchanged, so I'm omitting it for brevity)
 const char index_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE HTML><html>
 <head>
@@ -139,6 +153,8 @@ void setup() {
     server.addHandler(&events);
     server.onNotFound(notFound);
     server.begin();
+
+    setupMQTT();
 }
 
 void loop() {
@@ -146,6 +162,11 @@ void loop() {
     ArduinoOTA.handle();
     handleButton(BUTTON1_PIN, button1, "1");
     handleButton(BUTTON2_PIN, button2, "2");
+
+    if (!mqttClient.connected()) {
+        reconnectMQTT();
+    }
+    mqttClient.loop();
 }
 
 void notFound(AsyncWebServerRequest *request) {
@@ -158,6 +179,11 @@ void serialToWeb(String message) {
 
 void switchHub(String button) {
     serialToWeb("Switching Hub - Button " + button + " pressed");
+    if (button == "1") {
+        publishButtonPress(MQTT_TOPIC_BUTTON1);
+    } else if (button == "2") {
+        publishButtonPress(MQTT_TOPIC_BUTTON2);
+    }
 }
 
 void handlePushEventsPing() {
@@ -178,11 +204,40 @@ void handleButton(int pin, ButtonState &state, const String &buttonName) {
     }
 
     if ((millis() - state.lastDebounceTime) > DEBOUNCE_DELAY) {
-        if (state.lastSteadyState == HIGH && currentState == LOW) {
+        if (state.lastState == HIGH && currentState == LOW) {
+            serialToWeb("Button " + buttonName + " pressed");
             switchHub(buttonName);
         }
-        state.lastSteadyState = currentState;
+        state.lastState = currentState;
     }
-    
-    state.lastState = currentState;
+}
+
+void setupMQTT() {
+    mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
+    reconnectMQTT();
+}
+
+void reconnectMQTT() {
+    while (!mqttClient.connected()) {
+        Serial.println("Attempting MQTT connection...");
+        if (mqttClient.connect(MQTT_CLIENT_ID, MQTT_USERNAME, MQTT_PASSWORD)) {
+            Serial.println("Connected to MQTT broker");
+            serialToWeb("MQTT: Connected to " + String(MQTT_BROKER));
+        } else {
+            Serial.print("Failed to connect to MQTT broker, rc=");
+            serialToWeb("MQTT: Failed to connect to " + String(MQTT_BROKER));
+            Serial.print(mqttClient.state());
+            Serial.println(" Retrying in 5 seconds");
+            delay(5000);
+        }
+    }
+}
+
+void publishButtonPress(const char* topic) {
+    if (mqttClient.connected()) {
+        mqttClient.publish(topic, "pressed");
+        serialToWeb("MQTT: Published 'pressed' to " + String(topic));
+    } else {
+        serialToWeb("MQTT: Not connected. Failed to publish to " + String(topic));
+    }
 }
