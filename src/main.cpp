@@ -9,6 +9,25 @@
 AsyncWebServer server(80);
 AsyncEventSource events("/events");
 
+// Define button pins
+const int BUTTON1_PIN = 0;  // GPIO0
+const int BUTTON2_PIN = 2;  // GPIO2
+
+// Variables to store button states
+int lastButton1State = HIGH;
+int lastButton2State = HIGH;
+
+// Debounce time in milliseconds
+const unsigned long DEBOUNCE_DELAY = 50;
+
+// Last time the buttons were checked
+unsigned long lastDebounceTime1 = 0;
+unsigned long lastDebounceTime2 = 0;
+
+int lastSteadyState1 = HIGH;
+int lastSteadyState2 = HIGH;
+int lastFlickerableState1 = HIGH;
+int lastFlickerableState2 = HIGH;
 
 void notFound(AsyncWebServerRequest *request) {
     request->send(404, "text/plain", "Not found");
@@ -68,16 +87,7 @@ if (!!window.EventSource) {
   document.getElementById("serial").innerHTML = document.getElementById("serial").innerHTML + '<br/>' + e.data;
  }, false);
  
- source.addEventListener('new_readings', function(e) {
-  console.log("new_readings", e.data);
-  var obj = JSON.parse(e.data);
-  document.getElementById("t"+obj.id).innerHTML = obj.temperature.toFixed(2);
-  document.getElementById("h"+obj.id).innerHTML = obj.humidity.toFixed(2);
-  document.getElementById("rt"+obj.id).innerHTML = obj.readingId;
-  document.getElementById("rh"+obj.id).innerHTML = obj.readingId;
- }, false);
 }
-
 
 function sendMessage(message) {
   var xhttp = new XMLHttpRequest();
@@ -103,15 +113,14 @@ window.onload = function() {
 </body>
 </html>)rawliteral";
 
-
 void serialToWeb (String message) {
   events.send(message.c_str(), "serial", millis());
 }
 
-void switchHub() {
-    serialToWeb("Switching Hub");
+void switchHub(String button) {
+    serialToWeb("Switching Hub - Button " + button + " pressed");
+    // events.send(button.c_str(), "button_press", millis());
 }
-
 
 static unsigned long lastEventTime = millis();
 static const unsigned long EVENT_INTERVAL_MS = 5000;
@@ -125,9 +134,11 @@ void handlePushEventsPing() {
 void setup() {
     Serial.begin(115200);
 
-
     setupOTA("SmartButton");
 
+    // Set button pins as inputs with pull-up resistors
+    pinMode(BUTTON1_PIN, INPUT_PULLUP);
+    pinMode(BUTTON2_PIN, INPUT_PULLUP);
 
     // Setup web server
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -135,18 +146,18 @@ void setup() {
     });
 
     server.on("/toggle", HTTP_POST, [](AsyncWebServerRequest *request){
-        switchHub();
+        if (request->hasParam("message", true)) {
+            String message = request->getParam("message", true)->value();
+            switchHub(message);
+        }
         request->send(200, "text/plain", "OK");
     });
-
 
     // Events 
     events.onConnect([](AsyncEventSourceClient *client){
         if(client->lastId()){
             Serial.printf("Client reconnected! Last message ID that it got is: %u\n", client->lastId());
         }
-        // send event with message "hello!", id current millis
-        // and set reconnect delay to 1 second
         client->send("hello!", NULL, millis(), 10000);
     });
 
@@ -156,7 +167,44 @@ void setup() {
 }
 
 void loop() {
-  handlePushEventsPing();
+    handlePushEventsPing();
+    ArduinoOTA.handle();
 
-  ArduinoOTA.handle();
+    // Read button states
+    int currentState1 = digitalRead(BUTTON1_PIN);
+    int currentState2 = digitalRead(BUTTON2_PIN);
+
+    // Button 1 logic
+    if (currentState1 != lastFlickerableState1) {
+        lastDebounceTime1 = millis();
+        lastFlickerableState1 = currentState1;
+        serialToWeb("Button 1 state changed. Current state: " + String(currentState1));
+    }
+
+    if ((millis() - lastDebounceTime1) > DEBOUNCE_DELAY) {
+        if (lastSteadyState1 == HIGH && currentState1 == LOW) {
+            serialToWeb("Button 1 pressed (after debounce)");
+            switchHub("1");
+        } else if (lastSteadyState1 == LOW && currentState1 == HIGH) {
+            serialToWeb("Button 1 released (after debounce)");
+        }
+        lastSteadyState1 = currentState1;
+    }
+
+    // Button 2 logic (similar to Button 1)
+    if (currentState2 != lastFlickerableState2) {
+        lastDebounceTime2 = millis();
+        lastFlickerableState2 = currentState2;
+        serialToWeb("Button 2 state changed. Current state: " + String(currentState2));
+    }
+
+    if ((millis() - lastDebounceTime2) > DEBOUNCE_DELAY) {
+        if (lastSteadyState2 == HIGH && currentState2 == LOW) {
+            serialToWeb("Button 2 pressed (after debounce)");
+            switchHub("2");
+        } else if (lastSteadyState2 == LOW && currentState2 == HIGH) {
+            serialToWeb("Button 2 released (after debounce)");
+        }
+        lastSteadyState2 = currentState2;
+    }
 }
