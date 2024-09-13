@@ -11,7 +11,7 @@
 // WiFi setup
 const char* wifi_ssid = WIFI_SSID;
 const char* wifi_password = WIFI_PASSWORD;
-WiFiManager wifiManager(wifi_ssid, wifi_password);
+WiFiManager wifiManager(wifi_ssid, wifi_password, "SmartButton_AP");
 
 // MQTT setup
 const char* MQTT_CLIENT_ID = "ESP01s_SmartButton";
@@ -52,7 +52,7 @@ void setup() {
     Serial.begin(115200);
     otaManager.begin();
 
-    wifiManager.connect();
+    wifiManager.begin();
     
     webServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
         request->send_P(200, "text/html", index_html);
