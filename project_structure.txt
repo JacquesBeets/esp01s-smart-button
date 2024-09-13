@@ -1,226 +1,18 @@
 Folder PATH listing
+Volume serial number is 2CEE-A321
 C:.
 |   .gitignore
-|   paths.md
-|   paths.txt
 |   platformio.ini
 |   project_structure.txt
 |   readme.md
-|   structure.txt
 |   
 +---.pio
 |   +---build
 |   |   |   project.checksum
 |   |   |   
 |   |   \---esp01_1m
-|   |       |   .sconsign311.dblite
-|   |       |   firmware.bin
-|   |       |   firmware.elf
-|   |       |   idedata.json
-|   |       |   libFrameworkArduino.a
-|   |       |   libFrameworkArduinoVariant.a
-|   |       |   
-|   |       +---FrameworkArduino
-|   |       |   |   abi.cpp.o
-|   |       |   |   aes_unwrap.cpp.o
-|   |       |   |   base64.cpp.o
-|   |       |   |   cbuf.cpp.o
-|   |       |   |   cont.S.o
-|   |       |   |   cont_util.cpp.o
-|   |       |   |   core_esp8266_app_entry_noextra4k.cpp.o
-|   |       |   |   core_esp8266_eboot_command.cpp.o
-|   |       |   |   core_esp8266_features.cpp.o
-|   |       |   |   core_esp8266_flash_quirks.cpp.o
-|   |       |   |   core_esp8266_flash_utils.cpp.o
-|   |       |   |   core_esp8266_i2s.cpp.o
-|   |       |   |   core_esp8266_main.cpp.o
-|   |       |   |   core_esp8266_non32xfer.cpp.o
-|   |       |   |   core_esp8266_noniso.cpp.o
-|   |       |   |   core_esp8266_phy.cpp.o
-|   |       |   |   core_esp8266_postmortem.cpp.o
-|   |       |   |   core_esp8266_si2c.cpp.o
-|   |       |   |   core_esp8266_sigma_delta.cpp.o
-|   |       |   |   core_esp8266_spi_utils.cpp.o
-|   |       |   |   core_esp8266_timer.cpp.o
-|   |       |   |   core_esp8266_vm.cpp.o
-|   |       |   |   core_esp8266_waveform_phase.cpp.o
-|   |       |   |   core_esp8266_waveform_pwm.cpp.o
-|   |       |   |   core_esp8266_wiring.cpp.o
-|   |       |   |   core_esp8266_wiring_analog.cpp.o
-|   |       |   |   core_esp8266_wiring_digital.cpp.o
-|   |       |   |   core_esp8266_wiring_pulse.cpp.o
-|   |       |   |   core_esp8266_wiring_pwm.cpp.o
-|   |       |   |   core_esp8266_wiring_shift.cpp.o
-|   |       |   |   crc32.cpp.o
-|   |       |   |   Crypto.cpp.o
-|   |       |   |   debug.cpp.o
-|   |       |   |   Esp-frag.cpp.o
-|   |       |   |   Esp-version.cpp.o
-|   |       |   |   Esp.cpp.o
-|   |       |   |   exc-c-wrapper-handler.S.o
-|   |       |   |   exc-sethandler.cpp.o
-|   |       |   |   flash_hal.cpp.o
-|   |       |   |   FS.cpp.o
-|   |       |   |   FSnoop.cpp.o
-|   |       |   |   FunctionalInterrupt.cpp.o
-|   |       |   |   gdb_hooks.cpp.o
-|   |       |   |   HardwareSerial.cpp.o
-|   |       |   |   heap.cpp.o
-|   |       |   |   hwdt_app_entry.cpp.o
-|   |       |   |   IPAddress.cpp.o
-|   |       |   |   libc_replacements.cpp.o
-|   |       |   |   LwipDhcpServer-NonOS.cpp.o
-|   |       |   |   LwipDhcpServer.cpp.o
-|   |       |   |   LwipIntf.cpp.o
-|   |       |   |   LwipIntfCB.cpp.o
-|   |       |   |   MD5Builder.cpp.o
-|   |       |   |   mmu_iram.cpp.o
-|   |       |   |   Print.cpp.o
-|   |       |   |   reboot_uart_dwnld.cpp.o
-|   |       |   |   Schedule.cpp.o
-|   |       |   |   spiffs_api.cpp.o
-|   |       |   |   sqrt32.cpp.o
-|   |       |   |   StackThunk.cpp.o
-|   |       |   |   stdlib_noniso.cpp.o
-|   |       |   |   Stream.cpp.o
-|   |       |   |   StreamSend.cpp.o
-|   |       |   |   time.cpp.o
-|   |       |   |   Tone.cpp.o
-|   |       |   |   TypeConversion.cpp.o
-|   |       |   |   uart.cpp.o
-|   |       |   |   Updater.cpp.o
-|   |       |   |   WMath.cpp.o
-|   |       |   |   wpa2_eap_patch.cpp.o
-|   |       |   |   WString.cpp.o
-|   |       |   |   
-|   |       |   +---libb64
-|   |       |   |       cdecode.cpp.o
-|   |       |   |       cencode.cpp.o
-|   |       |   |       
-|   |       |   +---spiffs
-|   |       |   |       spiffs_cache.cpp.o
-|   |       |   |       spiffs_check.cpp.o
-|   |       |   |       spiffs_gc.cpp.o
-|   |       |   |       spiffs_hydrogen.cpp.o
-|   |       |   |       spiffs_nucleus.cpp.o
-|   |       |   |       
-|   |       |   \---umm_malloc
-|   |       |           umm_info.c.o
-|   |       |           umm_integrity.c.o
-|   |       |           umm_local.c.o
-|   |       |           umm_malloc.cpp.o
-|   |       |           umm_poison.c.o
-|   |       |           
-|   |       +---ld
-|   |       |       local.eagle.app.v6.common.ld
-|   |       |       
-|   |       +---lib0e4
-|   |       |   |   libPubSubClient.a
-|   |       |   |   
-|   |       |   \---PubSubClient
-|   |       |           PubSubClient.cpp.o
-|   |       |           
-|   |       +---lib0e7
-|   |       |   |   libESP8266WiFi.a
-|   |       |   |   
-|   |       |   \---ESP8266WiFi
-|   |       |           BearSSLHelpers.cpp.o
-|   |       |           CertStoreBearSSL.cpp.o
-|   |       |           enable_wifi_at_boot_time.cpp.o
-|   |       |           ESP8266WiFi.cpp.o
-|   |       |           ESP8266WiFiAP.cpp.o
-|   |       |           ESP8266WiFiGeneric.cpp.o
-|   |       |           ESP8266WiFiGratuitous.cpp.o
-|   |       |           ESP8266WiFiMulti.cpp.o
-|   |       |           ESP8266WiFiScan.cpp.o
-|   |       |           ESP8266WiFiSTA-WPS.cpp.o
-|   |       |           ESP8266WiFiSTA.cpp.o
-|   |       |           WiFiClient.cpp.o
-|   |       |           WiFiClientSecureBearSSL.cpp.o
-|   |       |           WiFiServer.cpp.o
-|   |       |           WiFiServerSecureBearSSL.cpp.o
-|   |       |           WiFiUdp.cpp.o
-|   |       |           
-|   |       +---lib15a
-|   |       |   |   libESPAsyncWebServer-esphome.a
-|   |       |   |   
-|   |       |   \---ESPAsyncWebServer-esphome
-|   |       |           AsyncEventSource.cpp.o
-|   |       |           AsyncWebSocket.cpp.o
-|   |       |           WebAuthentication.cpp.o
-|   |       |           WebHandlers.cpp.o
-|   |       |           WebRequest.cpp.o
-|   |       |           WebResponses.cpp.o
-|   |       |           WebServer.cpp.o
-|   |       |           
-|   |       +---lib201
-|   |       |   |   libArduinoOTA.a
-|   |       |   |   
-|   |       |   \---ArduinoOTA
-|   |       |           ArduinoOTA.cpp.o
-|   |       |           
-|   |       +---lib4f9
-|   |       |   |   libWebServerManager.a
-|   |       |   |   
-|   |       |   \---WebServerManager
-|   |       |           WebServerManager.cpp.o
-|   |       |           
-|   |       +---lib60a
-|   |       |   |   libESP8266mDNS.a
-|   |       |   |   
-|   |       |   \---ESP8266mDNS
-|   |       |           ESP8266mDNS.cpp.o
-|   |       |           LEAmDNS.cpp.o
-|   |       |           LEAmDNS_Control.cpp.o
-|   |       |           LEAmDNS_Helpers.cpp.o
-|   |       |           LEAmDNS_Structs.cpp.o
-|   |       |           LEAmDNS_Transfer.cpp.o
-|   |       |           
-|   |       +---lib7a8
-|   |       |   |   libButtonManager.a
-|   |       |   |   
-|   |       |   \---ButtonManager
-|   |       |           ButtonManager.cpp.o
-|   |       |           
-|   |       +---lib87f
-|   |       |   |   libWiFiManager.a
-|   |       |   |   
-|   |       |   \---WiFiManager
-|   |       |           WiFiManager.cpp.o
-|   |       |           
-|   |       +---lib93a
-|   |       |   |   libESPAsyncTCP-esphome.a
-|   |       |   |   
-|   |       |   \---ESPAsyncTCP-esphome
-|   |       |           AsyncPrinter.cpp.o
-|   |       |           ESPAsyncTCP.cpp.o
-|   |       |           ESPAsyncTCPbuffer.cpp.o
-|   |       |           SyncClient.cpp.o
-|   |       |           tcp_axtls.c.o
-|   |       |           
-|   |       +---libb54
-|   |       |   |   libMQTTManager.a
-|   |       |   |   
-|   |       |   \---MQTTManager
-|   |       |           MQTTManager.cpp.o
-|   |       |           
-|   |       +---libcd5
-|   |       |   |   libHash.a
-|   |       |   |   
-|   |       |   \---Hash
-|   |       |           Hash.cpp.o
-|   |       |           
-|   |       +---libf9e
-|   |       |   |   libLittleFS.a
-|   |       |   |   
-|   |       |   \---LittleFS
-|   |       |           lfs.c.o
-|   |       |           lfs_util.c.o
-|   |       |           LittleFS.cpp.o
-|   |       |           
-|   |       \---src
-|   |               main.cpp.o
-|   |               
+|   |           idedata.json
+|   |           
 |   \---libdeps
 |       \---esp01_1m
 |           |   integrity.dat
@@ -376,9 +168,6 @@ C:.
 |       secret.ini
 |       secret.template.ini
 |       
-+---data
-|       index.html
-|       
 +---include
 |       credentials.h
 |       credentials.template.h
@@ -404,6 +193,7 @@ C:.
 |   |       WebServerManager.h
 |   |       
 |   \---WiFiManager
+|           README.md
 |           WiFiManager.cpp
 |           WiFiManager.h
 |           

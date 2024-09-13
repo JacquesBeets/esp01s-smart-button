@@ -24,7 +24,3 @@ void WebServerManager::onNotFound(ArRequestHandlerFunction fn) {
 void WebServerManager::on(const char* uri, WebRequestMethodComposite method, ArRequestHandlerFunction fn) {
     _server.on(uri, method, fn);
 }
-
-void WebServerManager::serveStatic(const char* uri, const char* path) {
-    _server.serveStatic(uri, LittleFS, path);
-}

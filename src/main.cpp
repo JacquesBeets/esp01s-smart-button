@@ -19,7 +19,7 @@ const char* MQTT_TOPIC_BUTTON1 = "office/jacques/smartbutton/button1/click";
 const char* MQTT_TOPIC_BUTTON2 = "office/jacques/smartbutton/button2/click";
 MQTTManager mqttManager(MQTT_BROKER, MQTT_PORT, ENV_MQTT_USERNAME, ENV_MQTT_PASSWORD, MQTT_CLIENT_ID);
 
-// Button setup
+
 const int BUTTON1_PIN = 0;  // GPIO0
 const int BUTTON2_PIN = 2;  // GPIO2
 ButtonManager button1(BUTTON1_PIN);
@@ -51,7 +51,6 @@ void switchHub(const String& button) {
 void setup() {
     Serial.begin(115200);
     otaManager.begin();
-
     wifiManager.begin();
     
     webServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -79,7 +78,8 @@ void setup() {
 
 void loop() {
     otaManager.handle();
-    
+    wifiManager.handleClient();
+
     button1.update();
     button2.update();
 

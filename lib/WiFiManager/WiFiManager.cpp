@@ -1,7 +1,8 @@
 #include "WiFiManager.h"
+#include <Arduino.h>
 
 WiFiManager::WiFiManager(const char* ssid, const char* password, const char* apSsid)
-    : _ssid(ssid), _password(password), _apSsid(apSsid) {
+    : _ssid(ssid), _password(password), _apSsid(apSsid), _apMode(false) {
     _server = new AsyncWebServer(80);
 }
 
@@ -26,6 +27,7 @@ bool WiFiManager::connectWiFi() {
         Serial.println("\nWiFi connected!");
         Serial.print("IP Address: ");
         Serial.println(WiFi.localIP());
+        _apMode = false;
         return true;
     } else {
         Serial.println("\nFailed to connect to WiFi");
@@ -48,6 +50,7 @@ void WiFiManager::startAP() {
     Serial.println(_apSsid);
     Serial.print("AP IP address: ");
     Serial.println(WiFi.softAPIP());
+    _apMode = true;
 }
 
 void WiFiManager::setupServer() {
@@ -58,6 +61,11 @@ void WiFiManager::setupServer() {
                       "SSID: <input type='text' name='ssid'><br>"
                       "Password: <input type='password' name='pass'><br>"
                       "<input type='submit' value='Save'>"
+                      "</form>"
+                      "<h2>OTA Update</h2>"
+                      "<form method='POST' action='/update' enctype='multipart/form-data'>"
+                      "<input type='file' name='update'>"
+                      "<input type='submit' value='Update'>"
                       "</form></body></html>";
         request->send(200, "text/html", html);
     });
@@ -80,9 +88,41 @@ void WiFiManager::setupServer() {
         ESP.restart();
     });
 
+    _server->on("/update", HTTP_POST, 
+        [](AsyncWebServerRequest *request) {
+            request->send(200, "text/plain", (Update.hasError()) ? "Update fail" : "Update success");
+            ESP.restart();
+        },
+        [this](AsyncWebServerRequest *request, const String& filename, size_t index, uint8_t *data, size_t len, bool final) {
+            this->handleOTA(request, filename, index, data, len, final);
+        }
+    );
+
     _server->onNotFound([](AsyncWebServerRequest *request){
         request->redirect("/");
     });
+}
+
+void WiFiManager::handleOTA(AsyncWebServerRequest *request, const String& filename, size_t index, uint8_t *data, size_t len, bool final) {
+    if (!index) {
+        Serial.println("OTA update started");
+        Update.runAsync(true);
+        if (!Update.begin((ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000)) {
+            Update.printError(Serial);
+        }
+    }
+    if (!Update.hasError()) {
+        if (Update.write(data, len) != len) {
+            Update.printError(Serial);
+        }
+    }
+    if (final) {
+        if (Update.end(true)) {
+            Serial.println("OTA update finished");
+        } else {
+            Update.printError(Serial);
+        }
+    }
 }
 
 bool WiFiManager::isConnected() {
@@ -91,4 +131,10 @@ bool WiFiManager::isConnected() {
 
 String WiFiManager::getIPAddress() {
     return WiFi.localIP().toString();
+}
+
+void WiFiManager::handleClient() {
+    if (_apMode) {
+        _dnsServer.processNextRequest();
+    }
 }
