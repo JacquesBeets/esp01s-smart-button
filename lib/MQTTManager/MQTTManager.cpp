@@ -5,18 +5,24 @@ MQTTManager::MQTTManager(const char* broker, int port, const char* username, con
     _client.setServer(_broker, _port);
 }
 
-void MQTTManager::connect() {
-    while (!_client.connected()) {
+bool MQTTManager::connect() {
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("WiFi not connected. Cannot attempt MQTT connection.");
+        return false;
+    }
+    
+    if (!_client.connected()) {
         Serial.println("Attempting MQTT connection...");
         if (_client.connect(_clientId, _username, _password)) {
             Serial.println("Connected to MQTT broker");
+            return true;
         } else {
             Serial.print("Failed to connect to MQTT broker, rc=");
-            Serial.print(_client.state());
-            Serial.println(" Retrying in 5 seconds");
-            delay(5000);
+            Serial.println(_client.state());
+            return false;
         }
     }
+    return true;
 }
 
 bool MQTTManager::isConnected() {

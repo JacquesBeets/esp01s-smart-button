@@ -6,7 +6,7 @@
 class MQTTManager {
 public:
     MQTTManager(const char* broker, int port, const char* username, const char* password, const char* clientId);
-    void connect();
+    bool connect();
     bool isConnected();
     void loop();
     void publish(const char* topic, const char* message);

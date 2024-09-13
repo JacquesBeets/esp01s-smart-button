@@ -17,7 +17,7 @@ WiFiManager wifiManager(wifi_ssid, wifi_password);
 const char* MQTT_CLIENT_ID = "ESP01s_SmartButton";
 const char* MQTT_TOPIC_BUTTON1 = "office/jacques/smartbutton/button1/click";
 const char* MQTT_TOPIC_BUTTON2 = "office/jacques/smartbutton/button2/click";
-MQTTManager mqttManager(MQTT_BROKER, MQTT_PORT, MQTT_USERNAME, MQTT_PASSWORD, MQTT_CLIENT_ID);
+MQTTManager mqttManager(MQTT_BROKER, MQTT_PORT, ENV_MQTT_USERNAME, ENV_MQTT_PASSWORD, MQTT_CLIENT_ID);
 
 // Button setup
 const int BUTTON1_PIN = 0;  // GPIO0
@@ -28,6 +28,8 @@ ButtonManager button2(BUTTON2_PIN);
 // Web server setup
 WebServerManager webServer;
 OTAManager otaManager("SmartButton");
+
+unsigned long lastMqttReconnectAttempt = 0;
 
 void notFound(AsyncWebServerRequest *request) {
     request->send(404, "text/plain", "Not found");
@@ -50,10 +52,8 @@ void setup() {
     Serial.begin(115200);
     otaManager.begin();
 
-
     wifiManager.connect();
-    mqttManager.connect();
-
+    
     webServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
         request->send_P(200, "text/html", index_html);
     });
@@ -73,6 +73,8 @@ void setup() {
     webServer.addEventSource("/events");
     webServer.onNotFound(notFound);
     webServer.begin();
+
+    Serial.println("Web server started");
 }
 
 void loop() {
@@ -88,10 +90,18 @@ void loop() {
         switchHub("2");
     }
 
+    // Non-blocking MQTT connection
     if (!mqttManager.isConnected()) {
-        mqttManager.connect();
+        unsigned long now = millis();
+        if (now - lastMqttReconnectAttempt > 5000) {
+            lastMqttReconnectAttempt = now;
+            if (mqttManager.connect()) {
+                Serial.println("MQTT reconnected");
+            }
+        }
+    } else {
+        mqttManager.loop();
     }
-    mqttManager.loop();
 
     static unsigned long lastEventTime = millis();
     static const unsigned long EVENT_INTERVAL_MS = 5000;
