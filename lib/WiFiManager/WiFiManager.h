@@ -10,6 +10,7 @@ public:
     bool isConnected();
     String getIPAddress();
     void handleClient();  // Method to handle DNS in AP mode
+    char* getMacAddress();
 
 private:
     const char* _ssid;

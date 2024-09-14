@@ -28,6 +28,10 @@ const char index_html[] PROGMEM = R"rawliteral(
     <button id="button1">Button 1</button>
     <button id="button2">Button 2</button>
   </div>
+  <div class="content">
+    <button id="descover">HomeAssitant Descover</button>
+    <button id="un-descover">HomeAssitant UnDescover</button>
+  </div>
   <div id="serial"></div>
 <script>
 if (!!window.EventSource) {
@@ -64,13 +68,31 @@ function sendMessage(message) {
   xhttp.send("message=" + message); 
 }
 
+function sendDescover(type) {
+  var xhttp = new XMLHttpRequest();
+  xhttp.onreadystatechange = function() {
+    if (this.readyState == 4 && this.status == 200) {
+      console.log("Descover sent");
+    }
+  };
+  xhttp.open("POST", "/" + type, true);
+  xhttp.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
+  xhttp.send(); 
+}
+
 window.onload = function() {
   document.getElementById("button1").addEventListener("click", function() {
     sendMessage("button1");
   });   
   document.getElementById("button2").addEventListener("click", function() {
     sendMessage("button2");
-  });   
+  });
+  document.getElementById("descover").addEventListener("click", function() {
+    sendDescover("descover");
+  });
+  document.getElementById("un-descover").addEventListener("click", function() {
+    sendDescover("un-descover");
+  });
 }
 </script>
 </body>

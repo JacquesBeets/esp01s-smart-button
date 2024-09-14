@@ -3,6 +3,7 @@
 MQTTManager::MQTTManager(const char* broker, int port, const char* username, const char* password, const char* clientId)
     : _broker(broker), _port(port), _username(username), _password(password), _clientId(clientId), _client(_espClient) {
     _client.setServer(_broker, _port);
+    _client.setBufferSize(512);
 }
 
 bool MQTTManager::connect() {
@@ -33,6 +34,6 @@ void MQTTManager::loop() {
     _client.loop();
 }
 
-void MQTTManager::publish(const char* topic, const char* message) {
-    _client.publish(topic, message);
+void MQTTManager::publish(const char* topic, const char* message, boolean retained) {
+    _client.publish(topic, message, retained);
 }

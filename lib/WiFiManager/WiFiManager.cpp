@@ -35,6 +35,14 @@ bool WiFiManager::connectWiFi() {
     }
 }
 
+char* WiFiManager::getMacAddress() {
+    byte macAddr[6];
+    WiFi.macAddress(macAddr);
+    char* macAddress = new char[18];
+    sprintf(macAddress, "%02X:%02X:%02X:%02X:%02X:%02X", macAddr[0], macAddr[1], macAddr[2], macAddr[3], macAddr[4], macAddr[5]);
+    return macAddress;
+}
+
 void WiFiManager::startAP() {
     WiFi.mode(WIFI_AP);
     WiFi.softAP(_apSsid);

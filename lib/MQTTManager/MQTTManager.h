@@ -9,7 +9,7 @@ public:
     bool connect();
     bool isConnected();
     void loop();
-    void publish(const char* topic, const char* message);
+    void publish(const char* topic, const char* message, boolean retained = false);
 
 private:
     PubSubClient _client;
