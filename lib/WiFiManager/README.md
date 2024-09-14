@@ -76,6 +76,3 @@ You can perform OTA updates whether the device is connected to WiFi or in AP mod
 
 - If the device is stuck in a loop trying to connect to WiFi, it will eventually enter AP mode.
 - In AP mode, you can always access the configuration page at `http://192.168.4.1`.
-- If you need to reset the WiFi settings, you can typically do so by manually putting the device into AP mode (often by holding a specific button during boot, depending on your hardware setup).
-
-Remember to adapt these instructions based on any specific details of your project or hardware configuration.
