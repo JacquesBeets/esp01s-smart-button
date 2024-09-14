@@ -1,4 +1,3 @@
-// ButtonManager.h
 #pragma once
 #include <Arduino.h>
 
@@ -7,6 +6,7 @@ public:
     ButtonManager(int pin, unsigned long debounceDelay = 50);
     bool isPressed();
     void update();
+    bool stateChanged();
 
 private:
     int _pin;
@@ -14,4 +14,5 @@ private:
     int _lastFlickerableState;
     unsigned long _lastDebounceTime;
     unsigned long _debounceDelay;
+    bool _stateChanged;
 };

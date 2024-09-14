@@ -153,10 +153,11 @@ void loop() {
     button1.update();
     button2.update();
 
-    if (button1.isPressed()) {
+
+    if (button1.stateChanged() && button1.isPressed()) {
         handleButtonPress(MQTT_BUTTON1_ID);
     }
-    if (button2.isPressed()) {
+    if (button2.stateChanged() && button2.isPressed()) {
         handleButtonPress(MQTT_BUTTON2_ID);
     }
 
