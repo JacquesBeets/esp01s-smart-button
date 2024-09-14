@@ -91,7 +91,10 @@ window.onload = function() {
     sendDescover("descover");
   });
   document.getElementById("un-descover").addEventListener("click", function() {
-    sendDescover("un-descover");
+    // Confirm dialog
+    if (confirm("Are you sure you want to un-descover the device?")) {
+      sendDescover("un-descover");
+    }
   });
 }
 </script>
