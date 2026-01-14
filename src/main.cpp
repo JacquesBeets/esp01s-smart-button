@@ -1,49 +1,81 @@
 #include <Arduino.h>
+#include <ESP8266WiFi.h>
+#include <WiFiManager.h>
 #include <ArduinoJson.h>
-#include "OTA.h"
-#include "WiFiManager.h"
+#include <LittleFS.h>
+#include "ConfigManager.h"
 #include "MQTTManager.h"
 #include "ButtonManager.h"
 #include "WebServerManager.h"
 #include "HtmlTemplates.h"
-#include "credentials.h"
 
-// WiFi setup
-const char* wifi_ssid = WIFI_SSID;
-const char* wifi_password = WIFI_PASSWORD;
-WiFiManager wifiManager(wifi_ssid, wifi_password, "SmartButton_AP");
+// =============================================================================
+// Configuration
+// =============================================================================
 
-// Unique ID
+ConfigManager configManager;
+WiFiManager wifiManager;
+bool shouldSaveConfig = false;
+
+// WiFiManager custom parameters
+WiFiManagerParameter* custom_mqtt_broker;
+WiFiManagerParameter* custom_mqtt_port;
+WiFiManagerParameter* custom_mqtt_username;
+WiFiManagerParameter* custom_mqtt_password;
+
+// =============================================================================
+// Device Identity
+// =============================================================================
+
 char uidPrefix[] = "beetssmtbtn";
 char devUniqueID[30];
-
-// MQTT setup
 const char* MQTT_CLIENT_ID = "ESP01s_SmartButton";
 const char* MQTT_DISCOVERY_PREFIX = "homeassistant";
 const char* MQTT_NODE_ID;
 const char* MQTT_BUTTON1_ID = "button1";
 const char* MQTT_BUTTON2_ID = "button2";
 
-
-MQTTManager mqttManager(MQTT_BROKER, MQTT_PORT, ENV_MQTT_USERNAME, ENV_MQTT_PASSWORD, MQTT_CLIENT_ID);
+// =============================================================================
+// Hardware
+// =============================================================================
 
 const int BUTTON1_PIN = 0;  // GPIO0
 const int BUTTON2_PIN = 2;  // GPIO2
 ButtonManager button1(BUTTON1_PIN);
 ButtonManager button2(BUTTON2_PIN);
 
-// Web server setup
+// =============================================================================
+// Managers
+// =============================================================================
+
+MQTTManager mqttManager;
 WebServerManager webServer;
-OTAManager otaManager("SmartButton");
+
+// =============================================================================
+// Timing
+// =============================================================================
 
 unsigned long lastMqttReconnectAttempt = 0;
+const unsigned long MQTT_RECONNECT_INTERVAL = 5000;
 
+// =============================================================================
+// Callbacks
+// =============================================================================
+
+void saveConfigCallback() {
+    Serial.println("Should save config");
+    shouldSaveConfig = true;
+}
+
+// =============================================================================
+// Utility Functions
+// =============================================================================
 
 void createDiscoveryUniqueID() {
+    byte macAddr[6];
+    WiFi.macAddress(macAddr);
+
     strcpy(devUniqueID, uidPrefix);
-    char* macAddr = wifiManager.getMacAddress();
-    Serial.print("MAC Address: ");
-    Serial.println(macAddr);
     int preSizeBytes = sizeof(uidPrefix);
     int j = 0;
     for (int i = 2; i >= 0; i--) {
@@ -61,7 +93,12 @@ void notFound(AsyncWebServerRequest *request) {
 
 void serialToWeb(const String& message) {
     webServer.sendEvent(message.c_str(), "serial");
+    Serial.println(message);
 }
+
+// =============================================================================
+// Button Handling
+// =============================================================================
 
 void handleButtonPress(const char* button_id) {
     createDiscoveryUniqueID();
@@ -70,49 +107,150 @@ void handleButtonPress(const char* button_id) {
     serialToWeb("Button " + String(button_id) + " pressed");
 }
 
+// =============================================================================
+// Home Assistant Discovery
+// =============================================================================
+
 void publishDiscoveryMessage(const char* button_id) {
     createDiscoveryUniqueID();
     String discoveryTopic = String(MQTT_DISCOVERY_PREFIX) + "/device_automation/" + MQTT_NODE_ID + "_" + button_id + "/config";
-    serialToWeb(discoveryTopic);
-    DynamicJsonDocument doc(1024);
-    const size_t CAPACITY = JSON_ARRAY_SIZE(1);
-    StaticJsonDocument<CAPACITY> docArr;
-    JsonArray array = docArr.to<JsonArray>();
-    array.add(MQTT_NODE_ID);
+    serialToWeb("Publishing discovery: " + discoveryTopic);
+
+    JsonDocument doc;
+    JsonArray ids = doc["device"]["identifiers"].to<JsonArray>();
+    ids.add(MQTT_NODE_ID);
+
     doc["automation_type"] = "trigger";
     doc["topic"] = String(MQTT_DISCOVERY_PREFIX) + "/" + MQTT_NODE_ID + "/" + button_id + "/state";
     doc["type"] = "button_short_press";
     doc["subtype"] = button_id;
     doc["payload"] = "PRESS";
-    doc["device"]["identifiers"] = docArr;
     doc["device"]["name"] = "Smart Button";
     doc["device"]["model"] = "ESP01s Smart Button";
     doc["device"]["manufacturer"] = "DIY";
 
     String output;
     serializeJson(doc, output);
-    serialToWeb(output);
     mqttManager.publish(discoveryTopic.c_str(), output.c_str(), true);
+    serialToWeb("Discovery published");
 }
 
-void unDescover(const char* button_id) {
+void unDiscover(const char* button_id) {
     createDiscoveryUniqueID();
     String discoveryTopic = String(MQTT_DISCOVERY_PREFIX) + "/device_automation/" + MQTT_NODE_ID + "_" + button_id + "/config";
-    serialToWeb("Un-Descover: " + discoveryTopic);
-    mqttManager.publish(discoveryTopic.c_str(), NULL);
+    serialToWeb("Removing discovery: " + discoveryTopic);
+    mqttManager.publish(discoveryTopic.c_str(), "");
 }
+
+// =============================================================================
+// WiFi Setup
+// =============================================================================
+
+void setupWiFiManager() {
+    WiFi.hostname("smart-button");
+
+    // Create custom parameters with current values
+    custom_mqtt_broker = new WiFiManagerParameter("mqtt_broker", "MQTT Broker", configManager.getMqttBroker(), 64);
+    custom_mqtt_port = new WiFiManagerParameter("mqtt_port", "MQTT Port", configManager.config.mqtt_port, 6);
+    custom_mqtt_username = new WiFiManagerParameter("mqtt_user", "MQTT Username", configManager.getMqttUsername(), 32);
+    custom_mqtt_password = new WiFiManagerParameter("mqtt_pass", "MQTT Password", configManager.getMqttPassword(), 32);
+
+    wifiManager.addParameter(custom_mqtt_broker);
+    wifiManager.addParameter(custom_mqtt_port);
+    wifiManager.addParameter(custom_mqtt_username);
+    wifiManager.addParameter(custom_mqtt_password);
+
+    wifiManager.setSaveConfigCallback(saveConfigCallback);
+    wifiManager.setConfigPortalTimeout(180);
+    wifiManager.setMinimumSignalQuality(20);
+
+    Serial.println("Connecting to WiFi...");
+    if (!wifiManager.autoConnect("SmartButton-Setup")) {
+        Serial.println("Failed to connect, restarting...");
+        delay(3000);
+        ESP.restart();
+    }
+
+    Serial.println("WiFi connected!");
+    Serial.print("IP address: ");
+    Serial.println(WiFi.localIP());
+
+    // Read updated parameters
+    configManager.setMqttBroker(custom_mqtt_broker->getValue());
+    configManager.setMqttPort(custom_mqtt_port->getValue());
+    configManager.setMqttUsername(custom_mqtt_username->getValue());
+    configManager.setMqttPassword(custom_mqtt_password->getValue());
+
+    if (shouldSaveConfig) {
+        configManager.save();
+    }
+}
+
+// =============================================================================
+// Setup
+// =============================================================================
 
 void setup() {
     Serial.begin(115200);
-    otaManager.begin();
-    wifiManager.begin();
-    
-    webServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-        request->send_P(200, "text/html", index_html);
-    });
+    delay(1000);
+    Serial.println("\n\n=== ESP01s Smart Button ===\n");
 
-    webServer.on("/upload", HTTP_GET, [](AsyncWebServerRequest *request){
-        request->send_P(200, "text/html", upload_html);
+    // Load saved configuration
+    configManager.begin();
+
+    // Setup WiFi with captive portal
+    setupWiFiManager();
+
+    // Create unique device ID
+    createDiscoveryUniqueID();
+
+    // Configure MQTT with loaded settings
+    mqttManager.configure(
+        configManager.getMqttBroker(),
+        configManager.getMqttPort(),
+        configManager.getMqttUsername(),
+        configManager.getMqttPassword(),
+        MQTT_CLIENT_ID
+    );
+
+    // Web server routes
+    webServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+        String html = "<html><head>";
+        html += "<title>Smart Button</title>";
+        html += "<meta name='viewport' content='width=device-width, initial-scale=1'>";
+        html += "<style>";
+        html += "body{font-family:Arial;text-align:center;background:#1a1a1a;color:#fff;padding:20px;}";
+        html += ".btn{background:#4CAF50;border:none;color:#fff;padding:15px 30px;margin:5px;cursor:pointer;border-radius:4px;font-size:16px;}";
+        html += ".btn-red{background:#f44336;}";
+        html += ".btn-blue{background:#2196F3;}";
+        html += ".info{background:#333;padding:15px;border-radius:8px;margin:15px 0;text-align:left;}";
+        html += "</style></head><body>";
+        html += "<h1>Smart Button</h1>";
+
+        html += "<div class='info'>";
+        html += "<p><strong>IP:</strong> " + WiFi.localIP().toString() + "</p>";
+        html += "<p><strong>MQTT:</strong> " + String(configManager.getMqttBroker()) + ":" + String(configManager.getMqttPort()) + "</p>";
+        html += "<p><strong>MQTT Status:</strong> " + String(mqttManager.isConnected() ? "Connected" : "Disconnected") + "</p>";
+        html += "</div>";
+
+        html += "<h3>Test Buttons</h3>";
+        html += "<form action='/toggle' method='POST'>";
+        html += "<button class='btn' name='message' value='button1'>Button 1</button>";
+        html += "<button class='btn' name='message' value='button2'>Button 2</button>";
+        html += "</form>";
+
+        html += "<h3>Home Assistant</h3>";
+        html += "<form action='/discover' method='POST' style='display:inline'>";
+        html += "<button class='btn btn-blue'>Add to HA</button></form>";
+        html += "<form action='/undiscover' method='POST' style='display:inline'>";
+        html += "<button class='btn btn-red'>Remove from HA</button></form>";
+
+        html += "<h3>Device</h3>";
+        html += "<form action='/reset' method='POST'>";
+        html += "<button class='btn btn-red'>Reset WiFi Config</button></form>";
+
+        html += "</body></html>";
+        request->send(200, "text/html", html);
     });
 
     webServer.on("/toggle", HTTP_POST, [](AsyncWebServerRequest *request){
@@ -124,19 +262,27 @@ void setup() {
                 handleButtonPress(MQTT_BUTTON2_ID);
             }
         }
-        request->send(200, "text/plain", "OK");
+        request->redirect("/");
     });
 
-    webServer.on("/descover", HTTP_POST, [](AsyncWebServerRequest *request){
+    webServer.on("/discover", HTTP_POST, [](AsyncWebServerRequest *request){
         publishDiscoveryMessage(MQTT_BUTTON1_ID);
         publishDiscoveryMessage(MQTT_BUTTON2_ID);
-        request->send(200, "text/plain", "OK");
+        request->redirect("/");
     });
 
-    webServer.on("/un-descover", HTTP_POST, [](AsyncWebServerRequest *request){
-        unDescover(MQTT_BUTTON1_ID);
-        unDescover(MQTT_BUTTON2_ID);
-        request->send(200, "text/plain", "OK");
+    webServer.on("/undiscover", HTTP_POST, [](AsyncWebServerRequest *request){
+        unDiscover(MQTT_BUTTON1_ID);
+        unDiscover(MQTT_BUTTON2_ID);
+        request->redirect("/");
+    });
+
+    webServer.on("/reset", HTTP_POST, [](AsyncWebServerRequest *request){
+        request->send(200, "text/html", "<h1>Resetting...</h1><p>Connect to 'SmartButton-Setup' to reconfigure.</p>");
+        delay(1000);
+        wifiManager.resetSettings();
+        configManager.reset();
+        ESP.restart();
     });
 
     webServer.addEventSource("/events");
@@ -144,16 +290,19 @@ void setup() {
     webServer.begin();
 
     Serial.println("Web server started");
+    Serial.println("\n=== Setup Complete ===\n");
 }
 
-void loop() {
-    otaManager.handle();
-    wifiManager.handleClient();
+// =============================================================================
+// Main Loop
+// =============================================================================
 
+void loop() {
+    // Update button states
     button1.update();
     button2.update();
 
-
+    // Handle button presses
     if (button1.stateChanged() && button1.isPressed()) {
         handleButtonPress(MQTT_BUTTON1_ID);
     }
@@ -161,24 +310,20 @@ void loop() {
         handleButtonPress(MQTT_BUTTON2_ID);
     }
 
-    // Non-blocking MQTT connection
+    // Non-blocking MQTT reconnect
     if (!mqttManager.isConnected()) {
         unsigned long now = millis();
-        if (now - lastMqttReconnectAttempt > 5000) {
+        if (now - lastMqttReconnectAttempt > MQTT_RECONNECT_INTERVAL) {
             lastMqttReconnectAttempt = now;
-            if (mqttManager.connect()) {
-                Serial.println("MQTT reconnected");
-                // publishDiscoveryMessage(MQTT_BUTTON1_ID);
-                // publishDiscoveryMessage(MQTT_BUTTON2_ID);
-            }
+            mqttManager.connect();
         }
     } else {
         mqttManager.loop();
     }
 
+    // Periodic ping to web clients
     static unsigned long lastEventTime = millis();
-    static const unsigned long EVENT_INTERVAL_MS = 5000;
-    if ((millis() - lastEventTime) > EVENT_INTERVAL_MS) {
+    if ((millis() - lastEventTime) > 5000) {
         webServer.sendEvent("ping");
         lastEventTime = millis();
     }

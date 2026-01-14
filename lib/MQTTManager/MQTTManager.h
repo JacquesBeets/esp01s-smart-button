@@ -5,7 +5,8 @@
 
 class MQTTManager {
 public:
-    MQTTManager(const char* broker, int port, const char* username, const char* password, const char* clientId);
+    MQTTManager();
+    void configure(const char* broker, int port, const char* username, const char* password, const char* clientId);
     bool connect();
     bool isConnected();
     void loop();
@@ -13,10 +14,11 @@ public:
 
 private:
     PubSubClient _client;
-    const char* _broker;
-    int _port;
-    const char* _username;
-    const char* _password;
-    const char* _clientId;
     WiFiClient _espClient;
+    char _broker[64];
+    int _port;
+    char _username[32];
+    char _password[32];
+    char _clientId[32];
+    bool _configured;
 };
