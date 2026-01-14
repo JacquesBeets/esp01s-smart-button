@@ -13,8 +13,8 @@ public:
     void publish(const char* topic, const char* message, boolean retained = false);
 
 private:
+    WiFiClient _espClient;   // MUST be declared before _client (initialization order)
     PubSubClient _client;
-    WiFiClient _espClient;
     char _broker[64];
     int _port;
     char _username[32];

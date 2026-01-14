@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
+#include <ArduinoOTA.h>
 #include <WiFiManager.h>
 #include <ArduinoJson.h>
 #include <LittleFS.h>
@@ -7,7 +8,6 @@
 #include "MQTTManager.h"
 #include "ButtonManager.h"
 #include "WebServerManager.h"
-#include "HtmlTemplates.h"
 
 // =============================================================================
 // Configuration
@@ -31,7 +31,7 @@ char uidPrefix[] = "beetssmtbtn";
 char devUniqueID[30];
 const char* MQTT_CLIENT_ID = "ESP01s_SmartButton";
 const char* MQTT_DISCOVERY_PREFIX = "homeassistant";
-const char* MQTT_NODE_ID;
+const char* MQTT_NODE_ID = nullptr;  // Initialized by createDiscoveryUniqueID()
 const char* MQTT_BUTTON1_ID = "button1";
 const char* MQTT_BUTTON2_ID = "button2";
 
@@ -204,6 +204,28 @@ void setup() {
     // Create unique device ID
     createDiscoveryUniqueID();
 
+    // Setup ArduinoOTA for remote updates
+    ArduinoOTA.setHostname("smart-button");
+    ArduinoOTA.onStart([]() {
+        Serial.println("OTA Update starting...");
+    });
+    ArduinoOTA.onEnd([]() {
+        Serial.println("\nOTA Update complete!");
+    });
+    ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+        Serial.printf("OTA Progress: %u%%\r", (progress / (total / 100)));
+    });
+    ArduinoOTA.onError([](ota_error_t error) {
+        Serial.printf("OTA Error[%u]: ", error);
+        if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+        else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+        else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+        else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+        else if (error == OTA_END_ERROR) Serial.println("End Failed");
+    });
+    ArduinoOTA.begin();
+    Serial.println("ArduinoOTA ready");
+
     // Configure MQTT with loaded settings
     mqttManager.configure(
         configManager.getMqttBroker(),
@@ -298,6 +320,9 @@ void setup() {
 // =============================================================================
 
 void loop() {
+    // Handle OTA updates
+    ArduinoOTA.handle();
+
     // Update button states
     button1.update();
     button2.update();
