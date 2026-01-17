@@ -1,13 +1,25 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
 #include <ArduinoOTA.h>
 #include <WiFiManager.h>
-#include <ArduinoJson.h>
 #include <LittleFS.h>
 #include "ConfigManager.h"
 #include "MQTTManager.h"
 #include "ButtonManager.h"
-#include "WebServerManager.h"
+
+// =============================================================================
+// Debug Macros - Serial output disabled in release builds to save flash
+// =============================================================================
+#ifdef DEBUG_BUILD
+    #define DEBUG_PRINT(x) Serial.print(x)
+    #define DEBUG_PRINTLN(x) Serial.println(x)
+    #define DEBUG_PRINTF(...) Serial.printf(__VA_ARGS__)
+#else
+    #define DEBUG_PRINT(x)
+    #define DEBUG_PRINTLN(x)
+    #define DEBUG_PRINTF(...)
+#endif
 
 // =============================================================================
 // Configuration
@@ -49,7 +61,7 @@ ButtonManager button2(BUTTON2_PIN);
 // =============================================================================
 
 MQTTManager mqttManager;
-WebServerManager webServer;
+ESP8266WebServer webServer(80);
 
 // =============================================================================
 // Timing
@@ -57,13 +69,14 @@ WebServerManager webServer;
 
 unsigned long lastMqttReconnectAttempt = 0;
 const unsigned long MQTT_RECONNECT_INTERVAL = 5000;
+bool discoveryPublished = false;  // Track if HA discovery has been sent
 
 // =============================================================================
 // Callbacks
 // =============================================================================
 
 void saveConfigCallback() {
-    Serial.println("Should save config");
+    DEBUG_PRINTLN("Should save config");
     shouldSaveConfig = true;
 }
 
@@ -82,18 +95,9 @@ void createDiscoveryUniqueID() {
         sprintf(&devUniqueID[(preSizeBytes - 1) + (j)], "%02X", macAddr[i]);
         j = j + 2;
     }
-    Serial.print("Unique ID: ");
-    Serial.println(devUniqueID);
+    DEBUG_PRINT("Unique ID: ");
+    DEBUG_PRINTLN(devUniqueID);
     MQTT_NODE_ID = devUniqueID;
-}
-
-void notFound(AsyncWebServerRequest *request) {
-    request->send(404, "text/plain", "Not found");
-}
-
-void serialToWeb(const String& message) {
-    webServer.sendEvent(message.c_str(), "serial");
-    Serial.println(message);
 }
 
 // =============================================================================
@@ -104,7 +108,7 @@ void handleButtonPress(const char* button_id) {
     createDiscoveryUniqueID();
     String stateTopic = String(MQTT_DISCOVERY_PREFIX) + "/" + MQTT_NODE_ID + "/" + button_id + "/state";
     mqttManager.publish(stateTopic.c_str(), "PRESS");
-    serialToWeb("Button " + String(button_id) + " pressed");
+    DEBUG_PRINTLN("Button " + String(button_id) + " pressed");
 }
 
 // =============================================================================
@@ -114,32 +118,99 @@ void handleButtonPress(const char* button_id) {
 void publishDiscoveryMessage(const char* button_id) {
     createDiscoveryUniqueID();
     String discoveryTopic = String(MQTT_DISCOVERY_PREFIX) + "/device_automation/" + MQTT_NODE_ID + "_" + button_id + "/config";
-    serialToWeb("Publishing discovery: " + discoveryTopic);
+    DEBUG_PRINTLN("Publishing discovery: " + discoveryTopic);
 
-    JsonDocument doc;
-    JsonArray ids = doc["device"]["identifiers"].to<JsonArray>();
-    ids.add(MQTT_NODE_ID);
+    // Manual JSON construction - saves ~20KB by removing ArduinoJson dependency
+    String stateTopic = String(MQTT_DISCOVERY_PREFIX) + "/" + MQTT_NODE_ID + "/" + button_id + "/state";
 
-    doc["automation_type"] = "trigger";
-    doc["topic"] = String(MQTT_DISCOVERY_PREFIX) + "/" + MQTT_NODE_ID + "/" + button_id + "/state";
-    doc["type"] = "button_short_press";
-    doc["subtype"] = button_id;
-    doc["payload"] = "PRESS";
-    doc["device"]["name"] = "Smart Button";
-    doc["device"]["model"] = "ESP01s Smart Button";
-    doc["device"]["manufacturer"] = "DIY";
+    String json = "{";
+    json += "\"automation_type\":\"trigger\",";
+    json += "\"topic\":\"" + stateTopic + "\",";
+    json += "\"type\":\"button_short_press\",";
+    json += "\"subtype\":\"" + String(button_id) + "\",";
+    json += "\"payload\":\"PRESS\",";
+    json += "\"device\":{";
+    json += "\"identifiers\":[\"" + String(MQTT_NODE_ID) + "\"],";
+    json += "\"name\":\"Smart Button\",";
+    json += "\"model\":\"ESP01s Smart Button\",";
+    json += "\"manufacturer\":\"DIY\"";
+    json += "}}";
 
-    String output;
-    serializeJson(doc, output);
-    mqttManager.publish(discoveryTopic.c_str(), output.c_str(), true);
-    serialToWeb("Discovery published");
+    mqttManager.publish(discoveryTopic.c_str(), json.c_str(), true);
+    DEBUG_PRINTLN("Discovery published");
 }
 
 void unDiscover(const char* button_id) {
     createDiscoveryUniqueID();
     String discoveryTopic = String(MQTT_DISCOVERY_PREFIX) + "/device_automation/" + MQTT_NODE_ID + "_" + button_id + "/config";
-    serialToWeb("Removing discovery: " + discoveryTopic);
+    DEBUG_PRINTLN("Removing discovery: " + discoveryTopic);
     mqttManager.publish(discoveryTopic.c_str(), "");
+}
+
+// =============================================================================
+// Web Server Handlers
+// =============================================================================
+
+void handleRoot() {
+    // Minified HTML - saves ~1-2KB flash
+    String html = F("<!DOCTYPE html><html><head><title>Smart Button</title>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<style>body{font-family:Arial;text-align:center;background:#1a1a1a;color:#fff;padding:20px}"
+        ".b{background:#4CAF50;border:none;color:#fff;padding:15px 30px;margin:5px;cursor:pointer;border-radius:4px;font-size:16px}"
+        ".r{background:#f44336}.u{background:#2196F3}.i{background:#333;padding:15px;border-radius:8px;margin:15px 0;text-align:left}</style></head><body>"
+        "<h1>Smart Button</h1><div class='i'>");
+    html += "<p><b>IP:</b> " + WiFi.localIP().toString() + "</p>";
+    html += "<p><b>MQTT:</b> " + String(configManager.getMqttBroker()) + ":" + String(configManager.getMqttPort()) + "</p>";
+    html += "<p><b>Status:</b> " + String(mqttManager.isConnected() ? "Connected" : "Disconnected") + "</p></div>";
+    html += F("<h3>Test</h3><form action='/toggle' method='POST'>"
+        "<button class='b' name='button' value='button1'>Btn 1</button>"
+        "<button class='b' name='button' value='button2'>Btn 2</button></form>"
+        "<h3>Home Assistant</h3><form action='/discover' method='POST' style='display:inline'>"
+        "<button class='b u'>Add to HA</button></form>"
+        "<form action='/undiscover' method='POST' style='display:inline'>"
+        "<button class='b r'>Remove</button></form>"
+        "<h3>Device</h3><form action='/reset' method='POST'>"
+        "<button class='b r'>Reset WiFi</button></form></body></html>");
+    webServer.send(200, "text/html", html);
+}
+
+void handleToggle() {
+    if (webServer.hasArg("button")) {
+        String button = webServer.arg("button");
+        if (button == "button1") {
+            handleButtonPress(MQTT_BUTTON1_ID);
+        } else if (button == "button2") {
+            handleButtonPress(MQTT_BUTTON2_ID);
+        }
+    }
+    webServer.sendHeader("Location", "/");
+    webServer.send(303);
+}
+
+void handleDiscover() {
+    publishDiscoveryMessage(MQTT_BUTTON1_ID);
+    publishDiscoveryMessage(MQTT_BUTTON2_ID);
+    webServer.sendHeader("Location", "/");
+    webServer.send(303);
+}
+
+void handleUndiscover() {
+    unDiscover(MQTT_BUTTON1_ID);
+    unDiscover(MQTT_BUTTON2_ID);
+    webServer.sendHeader("Location", "/");
+    webServer.send(303);
+}
+
+void handleReset() {
+    webServer.send(200, "text/html", "<h1>Resetting...</h1><p>Connect to 'SmartButton-Setup' to reconfigure.</p>");
+    delay(1000);
+    wifiManager.resetSettings();
+    configManager.reset();
+    ESP.restart();
+}
+
+void handleNotFound() {
+    webServer.send(404, "text/plain", "Not found");
 }
 
 // =============================================================================
@@ -164,16 +235,16 @@ void setupWiFiManager() {
     wifiManager.setConfigPortalTimeout(180);
     wifiManager.setMinimumSignalQuality(20);
 
-    Serial.println("Connecting to WiFi...");
+    DEBUG_PRINTLN("Connecting to WiFi...");
     if (!wifiManager.autoConnect("SmartButton-Setup")) {
-        Serial.println("Failed to connect, restarting...");
+        DEBUG_PRINTLN("Failed to connect, restarting...");
         delay(3000);
         ESP.restart();
     }
 
-    Serial.println("WiFi connected!");
-    Serial.print("IP address: ");
-    Serial.println(WiFi.localIP());
+    DEBUG_PRINTLN("WiFi connected!");
+    DEBUG_PRINT("IP address: ");
+    DEBUG_PRINTLN(WiFi.localIP());
 
     // Read updated parameters
     configManager.setMqttBroker(custom_mqtt_broker->getValue());
@@ -191,9 +262,11 @@ void setupWiFiManager() {
 // =============================================================================
 
 void setup() {
+#ifdef DEBUG_BUILD
     Serial.begin(115200);
     delay(1000);
     Serial.println("\n\n=== ESP01s Smart Button ===\n");
+#endif
 
     // Load saved configuration
     configManager.begin();
@@ -206,6 +279,7 @@ void setup() {
 
     // Setup ArduinoOTA for remote updates
     ArduinoOTA.setHostname("smart-button");
+#ifdef DEBUG_BUILD
     ArduinoOTA.onStart([]() {
         Serial.println("OTA Update starting...");
     });
@@ -223,8 +297,9 @@ void setup() {
         else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
         else if (error == OTA_END_ERROR) Serial.println("End Failed");
     });
+#endif
     ArduinoOTA.begin();
-    Serial.println("ArduinoOTA ready");
+    DEBUG_PRINTLN("ArduinoOTA ready");
 
     // Configure MQTT with loaded settings
     mqttManager.configure(
@@ -236,83 +311,16 @@ void setup() {
     );
 
     // Web server routes
-    webServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-        String html = "<html><head>";
-        html += "<title>Smart Button</title>";
-        html += "<meta name='viewport' content='width=device-width, initial-scale=1'>";
-        html += "<style>";
-        html += "body{font-family:Arial;text-align:center;background:#1a1a1a;color:#fff;padding:20px;}";
-        html += ".btn{background:#4CAF50;border:none;color:#fff;padding:15px 30px;margin:5px;cursor:pointer;border-radius:4px;font-size:16px;}";
-        html += ".btn-red{background:#f44336;}";
-        html += ".btn-blue{background:#2196F3;}";
-        html += ".info{background:#333;padding:15px;border-radius:8px;margin:15px 0;text-align:left;}";
-        html += "</style></head><body>";
-        html += "<h1>Smart Button</h1>";
-
-        html += "<div class='info'>";
-        html += "<p><strong>IP:</strong> " + WiFi.localIP().toString() + "</p>";
-        html += "<p><strong>MQTT:</strong> " + String(configManager.getMqttBroker()) + ":" + String(configManager.getMqttPort()) + "</p>";
-        html += "<p><strong>MQTT Status:</strong> " + String(mqttManager.isConnected() ? "Connected" : "Disconnected") + "</p>";
-        html += "</div>";
-
-        html += "<h3>Test Buttons</h3>";
-        html += "<form action='/toggle' method='POST'>";
-        html += "<button class='btn' name='message' value='button1'>Button 1</button>";
-        html += "<button class='btn' name='message' value='button2'>Button 2</button>";
-        html += "</form>";
-
-        html += "<h3>Home Assistant</h3>";
-        html += "<form action='/discover' method='POST' style='display:inline'>";
-        html += "<button class='btn btn-blue'>Add to HA</button></form>";
-        html += "<form action='/undiscover' method='POST' style='display:inline'>";
-        html += "<button class='btn btn-red'>Remove from HA</button></form>";
-
-        html += "<h3>Device</h3>";
-        html += "<form action='/reset' method='POST'>";
-        html += "<button class='btn btn-red'>Reset WiFi Config</button></form>";
-
-        html += "</body></html>";
-        request->send(200, "text/html", html);
-    });
-
-    webServer.on("/toggle", HTTP_POST, [](AsyncWebServerRequest *request){
-        if (request->hasParam("message", true)) {
-            String message = request->getParam("message", true)->value();
-            if (message == "button1") {
-                handleButtonPress(MQTT_BUTTON1_ID);
-            } else if (message == "button2") {
-                handleButtonPress(MQTT_BUTTON2_ID);
-            }
-        }
-        request->redirect("/");
-    });
-
-    webServer.on("/discover", HTTP_POST, [](AsyncWebServerRequest *request){
-        publishDiscoveryMessage(MQTT_BUTTON1_ID);
-        publishDiscoveryMessage(MQTT_BUTTON2_ID);
-        request->redirect("/");
-    });
-
-    webServer.on("/undiscover", HTTP_POST, [](AsyncWebServerRequest *request){
-        unDiscover(MQTT_BUTTON1_ID);
-        unDiscover(MQTT_BUTTON2_ID);
-        request->redirect("/");
-    });
-
-    webServer.on("/reset", HTTP_POST, [](AsyncWebServerRequest *request){
-        request->send(200, "text/html", "<h1>Resetting...</h1><p>Connect to 'SmartButton-Setup' to reconfigure.</p>");
-        delay(1000);
-        wifiManager.resetSettings();
-        configManager.reset();
-        ESP.restart();
-    });
-
-    webServer.addEventSource("/events");
-    webServer.onNotFound(notFound);
+    webServer.on("/", HTTP_GET, handleRoot);
+    webServer.on("/toggle", HTTP_POST, handleToggle);
+    webServer.on("/discover", HTTP_POST, handleDiscover);
+    webServer.on("/undiscover", HTTP_POST, handleUndiscover);
+    webServer.on("/reset", HTTP_POST, handleReset);
+    webServer.onNotFound(handleNotFound);
     webServer.begin();
 
-    Serial.println("Web server started");
-    Serial.println("\n=== Setup Complete ===\n");
+    DEBUG_PRINTLN("Web server started");
+    DEBUG_PRINTLN("\n=== Setup Complete ===\n");
 }
 
 // =============================================================================
@@ -322,6 +330,9 @@ void setup() {
 void loop() {
     // Handle OTA updates
     ArduinoOTA.handle();
+
+    // Handle web server
+    webServer.handleClient();
 
     // Update button states
     button1.update();
@@ -337,19 +348,20 @@ void loop() {
 
     // Non-blocking MQTT reconnect
     if (!mqttManager.isConnected()) {
+        discoveryPublished = false;  // Reset so discovery is resent on reconnect
         unsigned long now = millis();
         if (now - lastMqttReconnectAttempt > MQTT_RECONNECT_INTERVAL) {
             lastMqttReconnectAttempt = now;
             mqttManager.connect();
         }
     } else {
+        // Publish HA discovery on first connect
+        if (!discoveryPublished) {
+            delay(100);  // Brief delay to ensure MQTT connection is stable
+            publishDiscoveryMessage(MQTT_BUTTON1_ID);
+            publishDiscoveryMessage(MQTT_BUTTON2_ID);
+            discoveryPublished = true;
+        }
         mqttManager.loop();
-    }
-
-    // Periodic ping to web clients
-    static unsigned long lastEventTime = millis();
-    if ((millis() - lastEventTime) > 5000) {
-        webServer.sendEvent("ping");
-        lastEventTime = millis();
     }
 }
