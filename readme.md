@@ -42,6 +42,26 @@ Once connected, access the device at its IP address:
 | `http://<device-ip>/undiscover` | POST endpoint to remove from HA |
 | `http://<device-ip>/reset` | POST endpoint to reset WiFi/MQTT config |
 
+## Direct LAN Control (no MQTT / Home Assistant needed)
+
+The button uses a fixed IP: **192.168.0.93** (gateway 192.168.0.1, subnet 255.255.255.0, DNS 192.168.0.1), set in `src/main.cpp`. Its web UI and OTA are at that address.
+
+Two extra fields, persisted in `/config.json` on LittleFS. Edit them in the WiFi setup portal (alongside the MQTT fields) or in the Config form on the web UI (`POST /config`). The defaults work with no manual config:
+
+| Field | Meaning | Default |
+|-------|---------|---------|
+| `hdmi_host` | IP or hostname of the HDMI switch | `192.168.0.91` |
+| `usb_host` | IP or hostname of the USB switch | `192.168.0.92` |
+
+On each press the button fires these HTTP GETs in order (a call is skipped if its host is empty; each call times out after 2 s):
+
+| Button | Requests |
+|--------|----------|
+| Button 1 | `http://{hdmi_host}/set?input=1`, then `http://{usb_host}/switch?to=Mac` |
+| Button 2 | `http://{hdmi_host}/set?input=2`, then `http://{usb_host}/switch?to=PC` |
+
+The MQTT `PRESS` message is still published when a broker is connected. If the MQTT broker field is empty, MQTT is disabled entirely.
+
 ## MQTT Topics
 
 Button presses are published to:

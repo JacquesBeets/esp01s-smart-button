@@ -8,6 +8,10 @@ MQTTManager::MQTTManager() : _client(_espClient), _configured(false), _port(1883
 }
 
 void MQTTManager::configure(const char* broker, int port, const char* username, const char* password, const char* clientId) {
+    // Safe to call again at runtime: drop any live session, next connect() uses new settings
+    if (_client.connected()) {
+        _client.disconnect();
+    }
     strlcpy(_broker, broker, sizeof(_broker));
     _port = port;
     strlcpy(_username, username, sizeof(_username));
@@ -16,7 +20,10 @@ void MQTTManager::configure(const char* broker, int port, const char* username, 
 
     _client.setServer(_broker, _port);
     _client.setBufferSize(768);  // Increased for HA discovery payloads
-    _configured = true;
+    // Bound blocking time of a connect attempt to a dead/unreachable broker
+    _espClient.setTimeout(1000);
+    _client.setSocketTimeout(1);
+    _configured = (_broker[0] != 0);  // Empty broker host: MQTT disabled
 }
 
 bool MQTTManager::connect() {

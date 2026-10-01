@@ -9,6 +9,7 @@ public:
     void configure(const char* broker, int port, const char* username, const char* password, const char* clientId);
     bool connect();
     bool isConnected();
+    bool isConfigured() { return _configured; }
     void loop();
     void publish(const char* topic, const char* message, boolean retained = false);
 

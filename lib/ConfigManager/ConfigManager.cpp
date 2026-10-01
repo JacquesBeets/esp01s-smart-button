@@ -8,10 +8,12 @@ ConfigManager::ConfigManager() {
 }
 
 void ConfigManager::setDefaults() {
-    strlcpy(config.mqtt_broker, "192.168.0.112", sizeof(config.mqtt_broker));
+    config.mqtt_broker[0] = 0;  // Empty: MQTT disabled until configured
     strlcpy(config.mqtt_port, "1883", sizeof(config.mqtt_port));
     strlcpy(config.mqtt_username, "beetsdebeermqtt", sizeof(config.mqtt_username));
     strlcpy(config.mqtt_password, "831126", sizeof(config.mqtt_password));
+    strlcpy(config.hdmi_host, "192.168.0.91", sizeof(config.hdmi_host));
+    strlcpy(config.usb_host, "192.168.0.92", sizeof(config.usb_host));
 }
 
 void ConfigManager::begin() {
@@ -54,6 +56,8 @@ bool ConfigManager::load() {
     extractJsonValue(json, "mqtt_port", config.mqtt_port, sizeof(config.mqtt_port));
     extractJsonValue(json, "mqtt_username", config.mqtt_username, sizeof(config.mqtt_username));
     extractJsonValue(json, "mqtt_password", config.mqtt_password, sizeof(config.mqtt_password));
+    extractJsonValue(json, "hdmi_host", config.hdmi_host, sizeof(config.hdmi_host));
+    extractJsonValue(json, "usb_host", config.usb_host, sizeof(config.usb_host));
 
     return true;
 }
@@ -69,7 +73,9 @@ bool ConfigManager::save() {
     file.print("\"mqtt_broker\":\""); file.print(config.mqtt_broker); file.print("\",");
     file.print("\"mqtt_port\":\""); file.print(config.mqtt_port); file.print("\",");
     file.print("\"mqtt_username\":\""); file.print(config.mqtt_username); file.print("\",");
-    file.print("\"mqtt_password\":\""); file.print(config.mqtt_password); file.print("\"");
+    file.print("\"mqtt_password\":\""); file.print(config.mqtt_password); file.print("\",");
+    file.print("\"hdmi_host\":\""); file.print(config.hdmi_host); file.print("\",");
+    file.print("\"usb_host\":\""); file.print(config.usb_host); file.print("\"");
     file.print("}");
     file.close();
     return true;
@@ -94,4 +100,12 @@ void ConfigManager::setMqttUsername(const char* value) {
 
 void ConfigManager::setMqttPassword(const char* value) {
     strlcpy(config.mqtt_password, value, sizeof(config.mqtt_password));
+}
+
+void ConfigManager::setHdmiHost(const char* value) {
+    strlcpy(config.hdmi_host, value, sizeof(config.hdmi_host));
+}
+
+void ConfigManager::setUsbHost(const char* value) {
+    strlcpy(config.usb_host, value, sizeof(config.usb_host));
 }
