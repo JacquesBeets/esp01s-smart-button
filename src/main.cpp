@@ -115,32 +115,81 @@ void createDiscoveryUniqueID() {
 // Button Handling
 // =============================================================================
 
-// Per-call connect + read timeout so a dead target cannot stall the loop
-const uint16_t HTTP_TIMEOUT_MS = 2000;
+// HTTP timeouts. HTTPClient::setTimeout() is what bounds the TCP connect wait:
+// HTTPClient::connect() copies it onto the WiFiClient (overriding client.setTimeout())
+// right before WiFiClient::connect(), and it also bounds DNS lookup and the response read.
+const uint16_t HTTP_TIMEOUT_FIRST_MS = 2000;   // First attempt on press
+const uint16_t HTTP_TIMEOUT_RETRY_MS = 1000;   // Retries from loop()
+const unsigned long LAN_RETRY_INTERVAL = 5000; // Per-target retry spacing
+const unsigned long LAN_RETRY_WINDOW = 90000;  // Give up this long after the press
 
-// Fire a single GET to http://{host}{path}. Skipped if host is empty.
-void httpGet(const char* host, const char* path) {
-    if (host[0] == 0 || WiFi.status() != WL_CONNECTED) return;
+// Desired LAN state from the last press, plus per-target pending/retry tracking
+uint8_t hdmiWant = 0;            // 1 or 2
+const char* usbWant = "";        // "Mac" or "PC"
+bool hdmiPending = false;
+bool usbPending = false;
+unsigned long lanPressMillis = 0;
+unsigned long hdmiLastTry = 0;
+unsigned long usbLastTry = 0;
+
+// GET http://{host}{path}. Returns true on HTTP 200, or if host is empty (nothing to do).
+bool httpGet(const char* host, const char* path, uint16_t timeoutMs) {
+    if (host[0] == 0) return true;
+    if (WiFi.status() != WL_CONNECTED) return false;
     WiFiClient client;
     HTTPClient http;
-    http.setTimeout(HTTP_TIMEOUT_MS);
+    http.setTimeout(timeoutMs);
     http.setReuse(false);
     String url = String("http://") + host + path;
     if (!http.begin(client, url)) {
         DEBUG_PRINTLN("HTTP begin failed: " + url);
-        return;
+        return false;
     }
     int code = http.GET();
     DEBUG_PRINTF("GET %s -> %d\n", url.c_str(), code);
-    (void)code;
     http.end();
+    return code == HTTP_CODE_OK;
 }
 
-// Drive the HDMI switch and USB switch directly over HTTP
+bool sendHdmi(uint16_t timeoutMs) {
+    return httpGet(configManager.getHdmiHost(), hdmiWant == 1 ? "/set?input=1" : "/set?input=2", timeoutMs);
+}
+
+bool sendUsb(uint16_t timeoutMs) {
+    String path = String("/switch?to=") + usbWant;
+    return httpGet(configManager.getUsbHost(), path.c_str(), timeoutMs);
+}
+
+// Drive the HDMI switch and USB switch directly over HTTP. Sets the desired state,
+// attempts both now, and leaves failed targets pending for retryPendingLan().
 void fireLanActions(const char* button_id) {
     bool isButton1 = (strcmp(button_id, MQTT_BUTTON1_ID) == 0);
-    httpGet(configManager.getHdmiHost(), isButton1 ? "/set?input=1" : "/set?input=2");
-    httpGet(configManager.getUsbHost(), isButton1 ? "/switch?to=Mac" : "/switch?to=PC");
+    hdmiWant = isButton1 ? 1 : 2;
+    usbWant = isButton1 ? "Mac" : "PC";
+    lanPressMillis = millis();
+    hdmiPending = !sendHdmi(HTTP_TIMEOUT_FIRST_MS);
+    hdmiLastTry = millis();
+    usbPending = !sendUsb(HTTP_TIMEOUT_FIRST_MS);
+    usbLastTry = millis();
+}
+
+// Called from loop(): at most ONE HTTP attempt per call, each target spaced
+// LAN_RETRY_INTERVAL apart, until 200 or LAN_RETRY_WINDOW after the press.
+void retryPendingLan() {
+    if (!hdmiPending && !usbPending) return;
+    unsigned long now = millis();
+    if (now - lanPressMillis > LAN_RETRY_WINDOW) {
+        DEBUG_PRINTLN("LAN retry window expired");
+        hdmiPending = usbPending = false;
+        return;
+    }
+    if (hdmiPending && now - hdmiLastTry >= LAN_RETRY_INTERVAL) {
+        hdmiPending = !sendHdmi(HTTP_TIMEOUT_RETRY_MS);
+        hdmiLastTry = millis();
+    } else if (usbPending && now - usbLastTry >= LAN_RETRY_INTERVAL) {
+        usbPending = !sendUsb(HTTP_TIMEOUT_RETRY_MS);
+        usbLastTry = millis();
+    }
 }
 
 void handleButtonPress(const char* button_id) {
@@ -205,7 +254,17 @@ void handleRoot() {
     html += "<p><b>MQTT:</b> " + String(configManager.getMqttBroker()) + ":" + String(configManager.getMqttPort()) + "</p>";
     html += "<p><b>Status:</b> " + String(mqttManager.isConnected() ? "Connected" : "Disconnected") + "</p>";
     html += "<p><b>HDMI:</b> " + String(configManager.getHdmiHost()) + "</p>";
-    html += "<p><b>USB:</b> " + String(configManager.getUsbHost()) + "</p></div>";
+    html += "<p><b>USB:</b> " + String(configManager.getUsbHost()) + "</p>";
+    html += "<p><b>pending:</b> ";
+    if (hdmiPending || usbPending) {
+        if (hdmiPending) html += "hdmi=" + String(hdmiWant) + " ";
+        if (usbPending) html += "usb=" + String(usbWant) + " ";
+        unsigned long el = millis() - lanPressMillis;
+        html += "(retrying, " + String(el < LAN_RETRY_WINDOW ? (LAN_RETRY_WINDOW - el) / 1000 : 0) + " s left)";
+    } else {
+        html += "none";
+    }
+    html += "</p></div>";
     html += F("<h3>Config</h3><form action='/config' method='POST'>");
     html += "<p>MQTT Broker <input name='mqtt_broker' maxlength='63' value='" + String(configManager.getMqttBroker()) + "'></p>";
     html += "<p>MQTT Port <input name='mqtt_port' maxlength='5' value='" + String(configManager.config.mqtt_port) + "'></p>";
@@ -225,16 +284,15 @@ void handleRoot() {
 }
 
 void handleToggle() {
-    if (webServer.hasArg("button")) {
-        String button = webServer.arg("button");
-        if (button == "button1") {
-            handleButtonPress(MQTT_BUTTON1_ID);
-        } else if (button == "button2") {
-            handleButtonPress(MQTT_BUTTON2_ID);
-        }
-    }
+    String button = webServer.arg("button");
+    // Respond first so the browser is not held up by the LAN GETs
     webServer.sendHeader("Location", "/");
     webServer.send(303);
+    if (button == "button1") {
+        handleButtonPress(MQTT_BUTTON1_ID);
+    } else if (button == "button2") {
+        handleButtonPress(MQTT_BUTTON2_ID);
+    }
 }
 
 void handleDiscover() {
@@ -422,6 +480,9 @@ void loop() {
     if (button2.stateChanged() && button2.isPressed()) {
         handleButtonPress(MQTT_BUTTON2_ID);
     }
+
+    // Retry LAN targets that did not return 200 (at most one HTTP attempt per pass)
+    retryPendingLan();
 
     // Non-blocking MQTT reconnect (millis() backoff; skipped if no broker host)
     if (!mqttManager.isConfigured()) {
